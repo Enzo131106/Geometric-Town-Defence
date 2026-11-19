@@ -4,7 +4,7 @@ const CELL = 70;
 const towers = [];
 const enemies = [];
 const bullet = [];
-let coins = [];
+let coins;
 let townhall;
 let waves;
 let grid;
@@ -39,8 +39,6 @@ q5.draw = function () {
     t.shoot();
   }
 
-  for (const t of towers) t.display();
-
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
 
@@ -58,7 +56,7 @@ q5.draw = function () {
 
     b.move();
 
-    if (b.outOfRange() || b.damage()) {
+    if (b.damage() || b.outOfRange()) {
       bullet.splice(i, 1);
     } else {
       b.display();
@@ -66,6 +64,38 @@ q5.draw = function () {
   }
 
   coins.display();
+};
+
+q5.windowResized = function () {
+  const oldX = townhall.x;
+  const oldY = townhall.y;
+
+  q5.resizeCanvas(q5.windowWidth, q5.windowHeight);
+
+  grid = drawGrid();
+
+  townhall.x = Math.floor(q5.width / 2 / CELL) * CELL + CELL / 2;
+  townhall.y = Math.floor(q5.height / 2 / CELL) * CELL + CELL / 2;
+
+  const dx = townhall.x - oldX;
+  const dy = townhall.y - oldY;
+
+  for (const t of towers) {
+    t.x += dx;
+    t.y += dy;
+  }
+
+  for (const e of enemies) {
+    e.x += dx;
+    e.y += dy;
+  }
+
+  for (const b of bullet) {
+    b.x += dx;
+    b.y += dy;
+    b.startX += dx;
+    b.startY += dy;
+  }
 };
 
 //=============
@@ -84,6 +114,20 @@ class Entity {
     q5.noStroke();
     q5.fill(this.color);
     q5.square(this.x, this.y, this.size, this.rounded);
+  }
+
+  shoot() {
+    if (q5.frameCount - this.lastShot < this.fireRate) return;
+
+    for (const e of enemies) {
+      const distance = Math.hypot(e.x - this.x, e.y - this.y);
+
+      if (distance <= this.range) {
+        bullet.push(new Bullet(this.x, this.y, e));
+        this.lastShot = q5.frameCount;
+        return;
+      }
+    }
   }
 }
 
@@ -111,24 +155,7 @@ class Townhall extends Entity {
     q5.fill(232, 18, 90);
     q5.textSize(24);
     q5.textAlign(q5.LEFT, q5.TOP);
-    q5.text(`❤️${this.#hp}`, 100, 20);
-  }
-
-  shoot() {
-  if (q5.frameCount - this.lastShot < this.fireRate) return;
-
-    for (const e of enemies) {
-      const distance = Math.hypot(
-        e.x - this.x,
-        e.y - this.y
-      );
-
-      if (distance <= this.range) {
-        bullet.push(new Bullet(this.x, this.y, e));
-        this.lastShot = q5.frameCount;
-        return;
-      }
-    }
+    q5.text(`❤️${this.#hp}`, 20, 20);
   }
 }
 
@@ -139,23 +166,6 @@ class Tower extends Entity {
     this.range = 200;
     this.fireRate = 60;
     this.lastShot = 0;
-  }
-
-  shoot() {
-  if (q5.frameCount - this.lastShot < this.fireRate) return;
-
-    for (const e of enemies) {
-      const distance = Math.hypot(
-        e.x - this.x,
-        e.y - this.y
-      );
-
-      if (distance <= this.range) {
-        bullet.push(new Bullet(this.x, this.y, e));
-        this.lastShot = q5.frameCount;
-        return;
-      }
-    }
   }
 }
 
@@ -294,20 +304,27 @@ class Bullet {
 
     this.size = 10;
     this.color = "yellow";
+
+    const distance = Math.hypot(target.x - x, target.y - y);
+
+    this.dx = distance > 0 ? (target.x - x) / distance : 0;
+    this.dy = distance > 0 ? (target.y - y) / distance : 0;
   }
 
   move() {
-    if (!enemies.includes(this.target)) return;
+    if (enemies.includes(this.target)) {
+      const dx = this.target.x - this.x;
+      const dy = this.target.y - this.y;
+      const distance = Math.hypot(dx, dy);
 
-    const dx = this.target.x - this.x;
-    const dy = this.target.y - this.y;
+      if (distance > 0) {
+        this.dx = dx / distance;
+        this.dy = dy / distance;
+      }
+    }
 
-    const distance = Math.hypot(dx, dy);
-
-    if (distance === 0) return;
-
-    this.x += dx / distance * this.speed;
-    this.y += dy / distance * this.speed;
+    this.x += this.dx * this.speed;
+    this.y += this.dy * this.speed;
   }
 
   display() {
@@ -327,7 +344,10 @@ class Bullet {
     if (distance < (this.size + this.target.size) / 2) {
       if (this.target.takeDamage(this.#damage)) {
         enemies.splice(enemies.indexOf(this.target), 1);
-        coins.add(20);
+
+        const reward = Math.ceil(20 * Math.pow(1.05, waves.number - 1));
+
+        coins.add(reward);
       }
 
       return true;
@@ -370,7 +390,7 @@ class Coins {
     q5.fill(255, 215, 0);
     q5.textSize(24);
     q5.textAlign(q5.LEFT, q5.TOP);
-    q5.text(`🪙${this.#amount}`, 20, 20);
+    q5.text(`🪙${this.#amount}`, 20, 55);
   }
 }
 
@@ -383,7 +403,9 @@ q5.mousePressed = function () {
   if (x === townhall.x && y === townhall.y) return;
   if (towers.some(t => t.x === x && t.y === y)) return;
 
-  if (coins.spend(25)) {
+  const price = Math.ceil(25 * Math.pow(2.27, towers.length));
+
+  if (coins.spend(price)) {
     towers.push(new Tower(x, y));
   }
 };
