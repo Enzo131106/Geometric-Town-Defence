@@ -6,6 +6,7 @@ const enemies = [];
 const bullet = [];
 let coins = [];
 let townhall;
+let waves;
 let grid;
 
 q5.setup = function () {
@@ -13,8 +14,7 @@ q5.setup = function () {
   townhall = new Townhall();
   coins = new Coins();
   grid = drawGrid();
-
-  enemies.push(new Enemy());
+  waves = new Wave();
 };
 
 function drawGrid() {
@@ -28,6 +28,8 @@ function drawGrid() {
 q5.draw = function () {
   q5.background(30);
   q5.image(grid, 0, 0, q5.width, q5.height);
+  waves.update();
+  waves.display();
 
   townhall.display();
   townhall.healthbar();
@@ -158,9 +160,9 @@ class Tower extends Entity {
 }
 
 class Enemy extends Entity {
-  #hp = 50;
+  #hp;
 
-  constructor() {
+  constructor(wave) {
     let x, y;
     const side = Math.floor(q5.random(4));
 
@@ -181,7 +183,9 @@ class Enemy extends Entity {
     super(x, y, CELL, "red");
     this.rounded = 50;
 
-    this.speed = 1;
+    this.speed = Math.min(1 + (wave - 1) * 0.05, 2.5);
+    this.#hp = Math.floor(10 * Math.pow(1.1, wave - 1));
+    this.attackDamage = Math.floor(20 * Math.pow(1.05, wave - 1));
   }
 
   move() {
@@ -203,7 +207,7 @@ class Enemy extends Entity {
     );
 
     if (distance < (this.size + townhall.size) / 2) {
-      townhall.damage(20);
+      townhall.damage(this.attackDamage);
       return true;
     }
 
@@ -214,6 +218,61 @@ class Enemy extends Entity {
     this.#hp -= amount;
 
     return this.#hp <= 0;
+  }
+}
+
+//=============
+
+class Wave {
+  constructor() {
+    this.number = 1;
+    this.toSpawn = 1;
+    this.spawnTimer = 0;
+    this.waitTimer = 0;
+    this.waiting = false;
+  }
+
+  update() {
+    if (this.toSpawn > 0) {
+      if (q5.frameCount - this.spawnTimer >= 60) {
+        let amount = 1;
+
+        if (q5.random() < 0.25) {
+          amount = Math.floor(q5.random(3, 6));
+        }
+
+        amount = Math.min(amount, this.toSpawn);
+
+        for (let i = 0; i < amount; i++) {
+          enemies.push(new Enemy(this.number));
+        }
+
+        this.toSpawn -= amount;
+        this.spawnTimer = q5.frameCount;
+      }
+    } else if (enemies.length === 0) {
+      if (!this.waiting) {
+        this.waiting = true;
+        this.waitTimer = q5.frameCount;
+      }
+
+      if (q5.frameCount - this.waitTimer >= 300) {
+        this.number++;
+        if (this.number <= 5) {
+          this.toSpawn = 1 + (this.number - 1) * 2;
+        } else {
+          this.toSpawn = Math.ceil(9 * Math.pow(1.2, this.number - 5));
+        }
+        this.waiting = false;
+      }
+    }
+  }
+
+  display() {
+    q5.fill(255);
+    q5.textSize(24);
+    q5.textAlign(q5.RIGHT, q5.TOP);
+    q5.text(`Wave ${this.number}`, q5.width - 20, 20);
   }
 }
 
