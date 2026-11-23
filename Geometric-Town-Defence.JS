@@ -1,4 +1,3 @@
-
 const q5 = new Q5();
 
 const CELL = 70;
