@@ -314,7 +314,7 @@ class Tower extends Entity {
 class Enemy extends Entity {
   #hp;
 
-  constructor(wave) {
+  constructor(wave, speedMultiplier = 1, hpMultiplier = 1, damageMultiplier = 1, color = "red") {
     let x, y;
     const side = Math.floor(q5.random(4));
 
@@ -332,12 +332,12 @@ class Enemy extends Entity {
       y = q5.height + CELL;
     }
 
-    super(x, y, CELL, "red");
+    super(x, y, CELL, color);
     this.rounded = 50;
 
-    this.speed = Math.min(1 + (wave - 1) * 0.05, 2.5);
-    this.#hp = Math.floor(10 * Math.pow(1.1, wave - 1));
-    this.attackDamage = Math.floor(20 * Math.pow(1.05, wave - 1));
+    this.speed = Math.min(1 + (wave - 1) * 0.05, 2.5) * speedMultiplier;
+    this.#hp = Math.max(1, Math.floor(10 * Math.pow(1.1, wave - 1) * hpMultiplier));
+    this.attackDamage = Math.max(1, Math.floor(20 * Math.pow(1.05, wave - 1) * damageMultiplier));
   }
 
   move() {
@@ -373,6 +373,20 @@ class Enemy extends Entity {
   }
 }
 
+class FastEnemy extends Enemy {
+  constructor(wave) {
+    super(wave, 1.8, 0.5, 0.5, "#f1c40f");
+    this.size = CELL - 30;
+  }
+}
+
+class SlowEnemy extends Enemy {
+  constructor(wave) {
+    super(wave, 0.6, 3, 2, "#9b59b6");
+    this.size = CELL - 5;
+  }
+}
+
 class Wave {
   constructor() {
     this.number = 1;
@@ -394,7 +408,15 @@ class Wave {
         amount = Math.min(amount, this.toSpawn);
 
         for (let i = 0; i < amount; i++) {
-          enemies.push(new Enemy(this.number));
+          const type = this.number === 1 ? 0 : q5.random();
+
+          if (type < 0.5) {
+            enemies.push(new Enemy(this.number));
+          } else if (type < 0.8) {
+            enemies.push(new FastEnemy(this.number));
+          } else {
+            enemies.push(new SlowEnemy(this.number));
+          }
         }
 
         this.toSpawn -= amount;
