@@ -1,3 +1,4 @@
+
 const q5 = new Q5();
 
 const CELL = 70;
@@ -8,6 +9,8 @@ let coins;
 let townhall;
 let waves;
 let grid;
+
+let gameState = "menu";
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -25,15 +28,109 @@ function drawGrid() {
   return Grid;
 }
 
+//=============
+// MENUS
+//=============
+
+function getButton() {
+  return {
+    x: q5.width / 2,
+    y: q5.height * 0.64,
+    width: Math.min(240, q5.width * 0.75),
+    height: Math.min(60, q5.height * 0.12)
+  };
+}
+
+function isButtonClicked() {
+  const b = getButton();
+
+  return (
+    q5.mouseX >= b.x - b.width / 2 &&
+    q5.mouseX <= b.x + b.width / 2 &&
+    q5.mouseY >= b.y - b.height / 2 &&
+    q5.mouseY <= b.y + b.height / 2
+  );
+}
+
+function drawButton(text) {
+  const b = getButton();
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+
+  q5.fill(isButtonClicked() ? "#39d980" : "#2ecc71");
+  q5.rect(b.x, b.y, b.width, b.height, 10);
+
+  q5.fill(255);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(Math.min(24, q5.width * 0.065, q5.height * 0.065));
+  q5.text(text, b.x, b.y);
+}
+
+function displayMenu() {
+  q5.background(30);
+
+  q5.fill(255);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.105));
+
+  q5.text("TOWER DEFENSE", q5.width / 2, q5.height * 0.35);
+
+  drawButton("Jouer");
+}
+
+function displayGameOver() {
+  q5.background(30);
+
+  q5.fill(255);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.105));
+
+  q5.text("GAME OVER", q5.width / 2, q5.height * 0.32);
+
+  q5.textSize(Math.min(24, q5.width * 0.06, q5.height * 0.06));
+  q5.text(`Vague atteinte : ${waves.number}`, q5.width / 2, q5.height * 0.46);
+
+  drawButton("Rejouer");
+}
+
+function restartGame() {
+  towers.length = 0;
+  enemies.length = 0;
+  bullet.length = 0;
+
+  townhall = new Townhall();
+  coins = new Coins();
+  waves = new Wave();
+
+  gameState = "playing";
+}
+
+//=============
+// JEU
+//=============
+
 q5.draw = function () {
+  if (gameState === "menu") {
+    displayMenu();
+    return;
+  }
+
+  if (gameState === "gameover") {
+    displayGameOver();
+    return;
+  }
+
   q5.background(30);
   q5.image(grid, 0, 0, q5.width, q5.height);
+
   waves.update();
   waves.display();
 
   townhall.display();
   townhall.healthbar();
   townhall.shoot();
+
   for (const t of towers) {
     t.display();
     t.shoot();
@@ -46,6 +143,11 @@ q5.draw = function () {
 
     if (e.damage()) {
       enemies.splice(i, 1);
+
+      if (gameState === "gameover") {
+        displayGameOver();
+        return;
+      }
     } else {
       e.display();
     }
@@ -144,14 +246,18 @@ class Townhall extends Entity {
 
     this.range = 200;
     this.fireRate = 60;
-    this.lastShot = 0;
+    this.lastShot = q5.frameCount;
   }
 
   damage(amount) {
-    this.#hp -= amount;
+    this.#hp = Math.max(0, this.#hp - amount);
+
+    if (this.#hp === 0) {
+      gameState = "gameover";
+    }
   }
 
-  healthbar(){
+  healthbar() {
     q5.fill(232, 18, 90);
     q5.textSize(24);
     q5.textAlign(q5.LEFT, q5.TOP);
@@ -237,7 +343,7 @@ class Wave {
   constructor() {
     this.number = 1;
     this.toSpawn = 1;
-    this.spawnTimer = 0;
+    this.spawnTimer = q5.frameCount;
     this.waitTimer = 0;
     this.waiting = false;
   }
@@ -268,11 +374,13 @@ class Wave {
 
       if (q5.frameCount - this.waitTimer >= 300) {
         this.number++;
+
         if (this.number <= 5) {
           this.toSpawn = 1 + (this.number - 1) * 2;
         } else {
           this.toSpawn = Math.ceil(9 * Math.pow(1.2, this.number - 5));
         }
+
         this.waiting = false;
       }
     }
@@ -395,8 +503,17 @@ class Coins {
 }
 
 //=============
+// CLICS
+//=============
 
 q5.mousePressed = function () {
+  if (gameState !== "playing") {
+    if (isButtonClicked()) {
+      restartGame();
+    }
+    return;
+  }
+
   const x = Math.floor(q5.mouseX / CELL) * CELL + CELL / 2;
   const y = Math.floor(q5.mouseY / CELL) * CELL + CELL / 2;
 
