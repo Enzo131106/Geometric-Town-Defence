@@ -10,6 +10,7 @@ let waves;
 let grid;
 
 let gameState = "menu";
+let gameMode = "navigation";
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -22,8 +23,15 @@ q5.setup = function () {
 function drawGrid() {
   const Grid = q5.createGraphics(q5.width, q5.height);
   Grid.stroke(255, 200);
-  for (let x = 0; x <= Grid.width; x += CELL) Grid.line(x, 0, x, Grid.height);
-  for (let y = 0; y <= Grid.height; y += CELL) Grid.line(0, y, Grid.width, y);
+
+  for (let x = 0; x <= Grid.width; x += CELL) {
+    Grid.line(x, 0, x, Grid.height);
+  }
+
+  for (let y = 0; y <= Grid.height; y += CELL) {
+    Grid.line(0, y, Grid.width, y);
+  }
+
   return Grid;
 }
 
@@ -31,17 +39,17 @@ function drawGrid() {
 // MENUS
 //=============
 
-function getButton() {
+function getButton(y) {
   return {
     x: q5.width / 2,
-    y: q5.height * 0.64,
-    width: Math.min(240, q5.width * 0.75),
-    height: Math.min(60, q5.height * 0.12)
+    y: y,
+    width: Math.min(240, q5.width * 0.8),
+    height: Math.min(60, q5.height * 0.11)
   };
 }
 
-function isButtonClicked() {
-  const b = getButton();
+function isButtonClicked(y) {
+  const b = getButton(y);
 
   return (
     q5.mouseX >= b.x - b.width / 2 &&
@@ -51,18 +59,18 @@ function isButtonClicked() {
   );
 }
 
-function drawButton(text) {
-  const b = getButton();
+function drawButton(text, y, color) {
+  const b = getButton(y);
 
   q5.rectMode(q5.CENTER);
   q5.noStroke();
 
-  q5.fill(isButtonClicked() ? "#39d980" : "#2ecc71");
+  q5.fill(isButtonClicked(y) ? "#39d980" : color);
   q5.rect(b.x, b.y, b.width, b.height, 10);
 
   q5.fill(255);
   q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(Math.min(24, q5.width * 0.065, q5.height * 0.065));
+  q5.textSize(Math.min(24, q5.width * 0.065, q5.height * 0.06));
   q5.text(text, b.x, b.y);
 }
 
@@ -71,11 +79,11 @@ function displayMenu() {
 
   q5.fill(255);
   q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.105));
+  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.1));
 
-  q5.text("TOWER DEFENSE", q5.width / 2, q5.height * 0.35);
+  q5.text("TOWER DEFENSE", q5.width / 2, q5.height * 0.38);
 
-  drawButton("Jouer");
+  drawButton("Jouer", q5.height * 0.62, "#2ecc71");
 }
 
 function displayGameOver() {
@@ -83,14 +91,15 @@ function displayGameOver() {
 
   q5.fill(255);
   q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.105));
+  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.1));
 
-  q5.text("GAME OVER", q5.width / 2, q5.height * 0.32);
+  q5.text("GAME OVER", q5.width / 2, q5.height * 0.28);
 
   q5.textSize(Math.min(24, q5.width * 0.06, q5.height * 0.06));
-  q5.text(`Vague atteinte : ${waves.number}`, q5.width / 2, q5.height * 0.46);
+  q5.text(`Vague atteinte : ${waves.number}`, q5.width / 2, q5.height * 0.4);
 
-  drawButton("Rejouer");
+  drawButton("Rejouer", q5.height * 0.58, "#2ecc71");
+  drawButton("Menu principal", q5.height * 0.74, "#555555");
 }
 
 function restartGame() {
@@ -102,7 +111,20 @@ function restartGame() {
   coins = new Coins();
   waves = new Wave();
 
+  gameMode = "navigation";
   gameState = "playing";
+}
+
+function displayGameMode() {
+  q5.textAlign(q5.LEFT, q5.TOP);
+
+  q5.textSize(18);
+  q5.fill(gameMode === "construction" ? "#2ecc71" : "#ffffff");
+  q5.text(`Mode : ${gameMode}`, 20, 100);
+
+  q5.fill(180);
+  q5.textSize(14);
+  q5.text("C : Construction | N : Navigation", 20, 125);
 }
 
 //=============
@@ -165,6 +187,7 @@ q5.draw = function () {
   }
 
   coins.display();
+  displayGameMode();
 };
 
 q5.windowResized = function () {
@@ -501,20 +524,50 @@ class Coins {
   }
 }
 
+q5.keyPressed = function () {
+  if (gameState !== "playing") return;
+
+  if (q5.key === "c" || q5.key === "C") {
+    gameMode = "construction";
+  }
+
+  if (q5.key === "n" || q5.key === "N") {
+    gameMode = "navigation";
+  }
+};
+
 //=============
 // CLICS
 //=============
 
 q5.mousePressed = function () {
-  if (gameState !== "playing") {
-    if (isButtonClicked()) {
+  if (gameState === "menu") {
+    if (isButtonClicked(q5.height * 0.62)) {
       restartGame();
     }
     return;
   }
 
+  if (gameState === "gameover") {
+    if (isButtonClicked(q5.height * 0.58)) {
+      restartGame();
+    } else if (isButtonClicked(q5.height * 0.74)) {
+      gameState = "menu";
+    }
+    return;
+  }
+
+  if (gameMode !== "construction") return;
+
   const x = Math.floor(q5.mouseX / CELL) * CELL + CELL / 2;
   const y = Math.floor(q5.mouseY / CELL) * CELL + CELL / 2;
+
+  if (
+    q5.mouseX < 0 ||
+    q5.mouseX >= q5.width ||
+    q5.mouseY < 0 ||
+    q5.mouseY >= q5.height
+  ) return;
 
   if (x === townhall.x && y === townhall.y) return;
   if (towers.some(t => t.x === x && t.y === y)) return;
