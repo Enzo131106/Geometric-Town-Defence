@@ -11,6 +11,7 @@ let grid;
 
 let gameState = "menu";
 let gameMode = "navigation";
+let modeMessageStart = -120;
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -34,10 +35,6 @@ function drawGrid() {
 
   return Grid;
 }
-
-//=============
-// MENUS
-//=============
 
 function getButton(y) {
   return {
@@ -112,24 +109,42 @@ function restartGame() {
   waves = new Wave();
 
   gameMode = "navigation";
+  modeMessageStart = -120;
   gameState = "playing";
 }
 
-function displayGameMode() {
-  q5.textAlign(q5.LEFT, q5.TOP);
-
-  q5.textSize(18);
-  q5.fill(gameMode === "construction" ? "#2ecc71" : "#ffffff");
-  q5.text(`Mode : ${gameMode}`, 20, 100);
-
+function displayControls() {
   q5.fill(180);
-  q5.textSize(14);
-  q5.text("C : Construction | N : Navigation", 20, 125);
+  q5.textSize(Math.min(16, q5.width * 0.04, q5.height * 0.04));
+  q5.textAlign(q5.LEFT, q5.BOTTOM);
+  q5.text("C : Construction\nN : Navigation", 20, q5.height - 20);
 }
 
-//=============
-// JEU
-//=============
+function displayModeMessage() {
+  const elapsed = q5.frameCount - modeMessageStart;
+
+  if (elapsed >= 120) return;
+
+  const alpha = Math.min(255, (120 - elapsed) * 10);
+  const x = q5.width / 2;
+  const y = q5.height * 0.12;
+  const width = Math.min(280, q5.width * 0.85);
+  const height = Math.min(50, q5.height * 0.12);
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.fill(20, 20, 20, alpha * 0.85);
+  q5.rect(x, y, width, height, 10);
+
+  q5.fill(255, alpha);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(Math.min(20, q5.width * 0.055, q5.height * 0.06));
+  q5.text(
+    gameMode === "construction" ? "Mode construction" : "Mode navigation",
+    x,
+    y
+  );
+}
 
 q5.draw = function () {
   if (gameState === "menu") {
@@ -187,7 +202,8 @@ q5.draw = function () {
   }
 
   coins.display();
-  displayGameMode();
+  displayControls();
+  displayModeMessage();
 };
 
 q5.windowResized = function () {
@@ -221,8 +237,6 @@ q5.windowResized = function () {
     b.startY += dy;
   }
 };
-
-//=============
 
 class Entity {
   constructor(x, y, size, color) {
@@ -359,8 +373,6 @@ class Enemy extends Entity {
   }
 }
 
-//=============
-
 class Wave {
   constructor() {
     this.number = 1;
@@ -415,8 +427,6 @@ class Wave {
     q5.text(`Wave ${this.number}`, q5.width - 20, 20);
   }
 }
-
-//=============
 
 class Bullet {
   #damage = 20;
@@ -496,8 +506,6 @@ class Bullet {
   }
 }
 
-//=============
-
 class Coins {
   #amount = 0;
 
@@ -527,18 +535,16 @@ class Coins {
 q5.keyPressed = function () {
   if (gameState !== "playing") return;
 
-  if (q5.key === "c" || q5.key === "C") {
+  if ((q5.key === "c" || q5.key === "C") && gameMode !== "construction") {
     gameMode = "construction";
+    modeMessageStart = q5.frameCount;
   }
 
-  if (q5.key === "n" || q5.key === "N") {
+  if ((q5.key === "n" || q5.key === "N") && gameMode !== "navigation") {
     gameMode = "navigation";
+    modeMessageStart = q5.frameCount;
   }
 };
-
-//=============
-// CLICS
-//=============
 
 q5.mousePressed = function () {
   if (gameState === "menu") {
