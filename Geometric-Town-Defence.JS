@@ -4,6 +4,7 @@ const CELL = 70;
 const towers = [];
 const enemies = [];
 const bullet = [];
+const effects = [];
 let coins;
 let townhall;
 let waves;
@@ -16,7 +17,9 @@ let paused = false;
 let tick = 0;
 let speed = 1;
 let tutorialShown = false;
+let mergeTutorialShown = false;
 let tutorialStep = "press";
+let draggingTower = null;
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -108,6 +111,8 @@ function restartGame() {
   towers.length = 0;
   enemies.length = 0;
   bullet.length = 0;
+  effects.length = 0;
+  draggingTower = null;
 
   townhall = new Townhall();
   coins = new Coins();
@@ -118,61 +123,78 @@ function restartGame() {
   paused = false;
   speed = 1;
   gameState = "playing";
+  tutorialShown = false;
+  mergeTutorialShown = false;
+  tutorialStep = "press";
 }
 
-function displayControls() {
-  q5.fill(180);
-  q5.textSize(Math.min(16, q5.width * 0.04, q5.height * 0.04));
-  q5.textAlign(q5.LEFT, q5.BOTTOM);
-  q5.text("C : Construction\nN : Navigation", 20, q5.height - 20);
+function tutorialBox(message, maxWidth) {
+  const x = q5.width / 2;
+  const size = Math.min(20, q5.width * 0.05, q5.height * 0.05);
+  const width = Math.min(maxWidth, q5.width * 0.9);
+  const height = size * 1.5 + 24;
+  const y = q5.height * 0.22;
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.fill(20, 20, 20, 220);
+  q5.rect(x, y, width, height, 10);
+
+  q5.fill(255, 215, 0);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(size);
+  q5.text(message, x, y);
+}
+
+// Redessine les tours par-dessus le voile sombre, avec un halo qui pulse
+function highlightTowers() {
+  const pulse = 0.5 + 0.5 * Math.sin(q5.frameCount * 0.1);
+
+  for (const t of towers) {
+    const isDragged = t === draggingTower;
+    const x = isDragged ? q5.mouseX : t.x;
+    const y = isDragged ? q5.mouseY : t.y;
+
+    // Halo pulsant derrière la tour
+    q5.noStroke();
+    q5.fill(255, 255, 255, 40 + 60 * pulse);
+    q5.circle(x, y, CELL + 10 + 12 * pulse);
+    q5.fill(255, 215, 0, 60);
+    q5.circle(x, y, CELL - 10);
+
+    // Tour redessinée par-dessus le voile (à la position de la souris si on la glisse)
+    const ox = t.x;
+    const oy = t.y;
+    t.x = x;
+    t.y = y;
+    t.display();
+    t.x = ox;
+    t.y = oy;
+  }
 }
 
 function displayTutorial() {
   if (tutorialStep === "place") {
-    const x = q5.width / 2;
-    const y = q5.height * 0.22;
-    const width = Math.min(420, q5.width * 0.9);
-    const height = Math.min(50, q5.height * 0.12);
+    tutorialBox("Clique sur une case pour poser une tour", 520);
+    return;
+  }
 
-    q5.rectMode(q5.CENTER);
-    q5.noStroke();
-    q5.fill(20, 20, 20, 220);
-    q5.rect(x, y, width, height, 10);
-
-    q5.fill(255, 215, 0);
-    q5.textAlign(q5.CENTER, q5.CENTER);
-    q5.textSize(Math.min(20, q5.width * 0.05, q5.height * 0.05));
-    q5.text("Clique sur une case pour poser une tour", x, y);
+  if (tutorialStep === "close") {
+    tutorialBox("Appuie sur C pour fermer le mode construction", 520);
     return;
   }
 
   q5.rectMode(q5.CORNER);
   q5.noStroke();
-  q5.fill(0, 190);
+  q5.fill(0, tutorialStep === "merge" ? 150 : 190);
   q5.rect(0, 0, q5.width, q5.height);
 
-  const size = Math.min(16, q5.width * 0.04, q5.height * 0.04);
-
-  q5.fill(255);
-  q5.textSize(size);
-  q5.textAlign(q5.LEFT, q5.BOTTOM);
-  q5.text("C : Construction\nN : Navigation", 20, q5.height - 20);
-
-  const tipX = 20 + q5.textWidth("C : Construction") + 12;
-  const tipY = q5.height - 20 - size * 1.8;
-  const len = Math.min(70, q5.width * 0.15);
-
-  q5.stroke(255, 215, 0);
-  q5.strokeWeight(4);
-  q5.line(tipX + len, tipY, tipX, tipY);
-  q5.line(tipX, tipY, tipX + 12, tipY - 8);
-  q5.line(tipX, tipY, tipX + 12, tipY + 8);
-
-  q5.noStroke();
-  q5.fill(255, 215, 0);
-  q5.textAlign(q5.LEFT, q5.CENTER);
-  q5.textSize(Math.min(20, q5.width * 0.05, q5.height * 0.05));
-  q5.text("Appuie sur C pour construire", tipX + len + 12, tipY);
+  if (tutorialStep === "merge") {
+    highlightTowers();
+    tutorialBox("Glisse un triangle sur l'autre pour les fusionner", 460);
+  } else {
+    tutorialBox("Appuie sur C pour construire", 420);
+  }
 }
 
 function displayModeMessage() {
@@ -237,16 +259,60 @@ q5.draw = function () {
   townhall.display();
   townhall.healthbar();
 
-  for (const t of towers) t.display();
+  for (const t of towers) {
+    if (t === draggingTower) continue;
+    t.display();
+  }
+
+  if (draggingTower) {
+    const ox = draggingTower.x;
+    const oy = draggingTower.y;
+
+    draggingTower.x = q5.mouseX;
+    draggingTower.y = q5.mouseY;
+    draggingTower.display();
+    draggingTower.x = ox;
+    draggingTower.y = oy;
+
+    const target = towers.find(
+      t => t !== draggingTower && Math.hypot(t.x - q5.mouseX, t.y - q5.mouseY) < CELL / 2
+    );
+
+    if (target && target.level === draggingTower.level && target.level < 3) {
+      q5.noFill();
+      q5.stroke(255, 255, 255, 200);
+      q5.strokeWeight(3);
+      q5.circle(target.x, target.y, CELL - 5);
+      q5.noStroke();
+    }
+  }
+
   for (const e of enemies) e.display();
   for (const b of bullet) b.display();
+  displayEffects();
 
   coins.display();
   displaySpeed();
-  displayControls();
   displayModeMessage();
   if (paused) displayTutorial();
 };
+
+// Anneau orange qui s'étend à l'endroit où une balle de niveau 3 se divise
+function displayEffects() {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const fx = effects[i];
+    const t = fx.age / fx.life;
+
+    q5.noFill();
+    q5.stroke(255, 159, 67, 255 * (1 - t));
+    q5.strokeWeight(4);
+    q5.circle(fx.x, fx.y, 20 + 70 * t);
+    q5.noStroke();
+
+    if (!paused) fx.age += speed;
+    if (fx.age >= fx.life) effects.splice(i, 1);
+  }
+}
 
 function updateGame() {
   tick++;
@@ -346,7 +412,9 @@ class Entity {
       const distance = Math.hypot(e.x - this.x, e.y - this.y);
 
       if (distance <= this.range) {
-        bullet.push(new Bullet(this.x, this.y, e));
+        const b = new Bullet(this.x, this.y, e, this.level);
+        b.range = this.range + 60; // sinon la balle disparaît avant d'atteindre les ennemis lointains
+        bullet.push(b);
         this.lastShot = tick;
         return;
       }
@@ -365,6 +433,7 @@ class Townhall extends Entity {
       "#1262da"
     );
 
+    this.level = 0;
     this.range = 200;
     this.fireRate = 60;
     this.lastShot = tick;
@@ -403,20 +472,43 @@ class Townhall extends Entity {
   }
 }
 
+// Tower levels: 1 = triangle jaune, 2 = carré rouge (2x vitesse de tir, +50% portée),
+// 3 = pentagone rouge (garde les stats du niveau 2, les balles se dispersent en 3 à l'impact)
 class Tower extends Entity {
-  constructor(x, y) {
+  constructor(x, y, level = 1) {
     super(x, y, CELL, "#f1c40f");
-
-    this.range = 200;
-    this.fireRate = 60;
+    this.level = level;
     this.lastShot = 0;
+    this.applyStats();
+  }
+
+  applyStats() {
+    if (this.level === 1) {
+      this.range = 200;
+      this.fireRate = 60;
+      this.color = "#f1c40f";
+    } else {
+      // niveaux 2 et 3 : mêmes stats
+      this.range = 300;
+      this.fireRate = 30;
+      this.color = "#e74c3c";
+    }
+  }
+
+  upgrade() {
+    this.level++;
+    this.applyStats();
   }
 
   display() {
     q5.noFill();
     q5.stroke(this.color);
     q5.strokeWeight(3);
-    this.polygon(3, CELL / 2 - 8);
+
+    if (this.level === 1) this.polygon(3, CELL / 2 - 8);
+    else if (this.level === 2) this.polygon(4, CELL / 2 - 5);
+    else this.polygon(5, CELL / 2 - 5);
+
     q5.noStroke();
   }
 }
@@ -561,30 +653,64 @@ class Wave {
 }
 
 class Bullet {
-  #damage = 20;
+  #damage;
 
-  constructor(x, y, target) {
+  constructor(x, y, target, sourceLevel = 0, canSplit = true, scale = 1, angle = 0) {
     this.x = x;
     this.y = y;
 
     this.target = target;
+    this.homing = !!target;
+    this.sourceLevel = sourceLevel;
+    this.canSplit = canSplit;
 
     this.speed = 5;
     this.range = 200;
+    this.#damage = 20 * scale;
     this.startX = this.x;
     this.startY = this.y;
 
     this.size = 10;
     this.color = "yellow";
 
-    const distance = Math.hypot(target.x - x, target.y - y);
+    if (target) {
+      const distance = Math.hypot(target.x - x, target.y - y);
 
-    this.dx = distance > 0 ? (target.x - x) / distance : 0;
-    this.dy = distance > 0 ? (target.y - y) / distance : 0;
+      this.dx = distance > 0 ? (target.x - x) / distance : 0;
+      this.dy = distance > 0 ? (target.y - y) / distance : 0;
+    } else {
+      this.dx = Math.cos(angle);
+      this.dy = Math.sin(angle);
+    }
+  }
+
+  // Si la cible est morte (tuée par une autre balle), vise l'ennemi le plus proche
+  retarget() {
+    let best = null;
+    let bestD = 300;
+
+    for (const e of enemies) {
+      const d = Math.hypot(e.x - this.x, e.y - this.y);
+
+      if (d < bestD) {
+        best = e;
+        bestD = d;
+      }
+    }
+
+    this.target = best;
+  }
+
+  hasLiveTarget() {
+    return this.target !== null && enemies.includes(this.target);
   }
 
   move() {
-    if (enemies.includes(this.target)) {
+    if (this.homing && !this.hasLiveTarget()) {
+      this.retarget();
+    }
+
+    if (this.hasLiveTarget()) {
       const dx = this.target.x - this.x;
       const dy = this.target.y - this.y;
       const distance = Math.hypot(dx, dy);
@@ -605,27 +731,69 @@ class Bullet {
     q5.circle(this.x, this.y, this.size);
   }
 
+  touches(e) {
+    return Math.hypot(e.x - this.x, e.y - this.y) < (this.size + e.size) / 2;
+  }
+
   damage() {
-    if (!enemies.includes(this.target)) return false;
+    let victim = null;
 
-    const distance = Math.hypot(
-      this.target.x - this.x,
-      this.target.y - this.y
-    );
-
-    if (distance < (this.size + this.target.size) / 2) {
-      if (this.target.takeDamage(this.#damage)) {
-        enemies.splice(enemies.indexOf(this.target), 1);
-
-        const reward = Math.ceil(20 * Math.pow(1.05, waves.number - 1));
-
-        coins.add(reward);
+    if (this.target) {
+      if (this.hasLiveTarget() && this.touches(this.target)) {
+        victim = this.target;
       }
-
-      return true;
+    } else {
+      victim = enemies.find(e => this.touches(e)) ?? null;
     }
 
-    return false;
+    if (!victim) return false;
+
+    const hitX = this.x;
+    const hitY = this.y;
+
+    if (victim.takeDamage(this.#damage)) {
+      enemies.splice(enemies.indexOf(victim), 1);
+
+      const reward = Math.ceil(20 * Math.pow(1.05, waves.number - 1));
+
+      coins.add(reward);
+    }
+
+    if (this.sourceLevel === 3 && this.canSplit) {
+      this.splitAt(hitX, hitY, victim);
+    }
+
+    return true;
+  }
+
+  // À l'impact d'une balle de niveau 3 : 3 petites boules apparaissent.
+  // Chaque boule vise un ennemi proche différent (les plus proches du point d'impact).
+  // S'il y a moins de 3 ennemis, les boules en trop partent dans le vide.
+  splitAt(x, y, victim) {
+    const radius = 160;
+
+    const nearby = enemies
+      .filter(e => e !== victim)
+      .map(e => ({ e, d: Math.hypot(e.x - x, e.y - y) }))
+      .filter(o => o.d <= radius)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 3);
+
+    const start = q5.random(Math.PI * 2);
+
+    for (let i = 0; i < 3; i++) {
+      const target = nearby[i] ? nearby[i].e : null;
+      const angle = start + (i * 2 * Math.PI) / 3;
+
+      const b = new Bullet(x, y, target, 0, false, 0.5, angle);
+      b.range = 200; // assez de portée pour rejoindre les ennemis dans le rayon
+      b.color = "#ff9f43";
+      b.size = 14;
+      b.speed = 4;
+      bullet.push(b);
+    }
+
+    effects.push({ x, y, age: 0, life: 25 });
   }
 
   outOfRange() {
@@ -671,20 +839,28 @@ q5.keyPressed = function () {
 
   if (paused) {
     if (q5.key === "c" || q5.key === "C") {
-      tutorialStep = "place";
-      gameMode = "construction";
-      modeMessageStart = q5.frameCount;
+      if (tutorialStep === "press") {
+        tutorialStep = "place";
+        gameMode = "construction";
+        modeMessageStart = q5.frameCount;
+      } else if (tutorialStep === "close") {
+        tutorialStep = "done";
+        paused = false;
+        gameMode = "navigation";
+        draggingTower = null;
+        modeMessageStart = q5.frameCount;
+      }
     }
     return;
   }
 
-  if ((q5.key === "c" || q5.key === "C") && gameMode !== "construction") {
-    gameMode = "construction";
-    modeMessageStart = q5.frameCount;
-  }
-
-  if ((q5.key === "n" || q5.key === "N") && gameMode !== "navigation") {
-    gameMode = "navigation";
+  if (q5.key === "c" || q5.key === "C") {
+    if (gameMode === "construction") {
+      gameMode = "navigation";
+      draggingTower = null;
+    } else {
+      gameMode = "construction";
+    }
     modeMessageStart = q5.frameCount;
   }
 };
@@ -708,6 +884,18 @@ q5.mousePressed = function () {
 
   if (gameMode !== "construction") return;
 
+  // Clic sur une tour existante : démarre le glisser pour fusion
+  const clicked = towers.find(
+    t => Math.hypot(t.x - q5.mouseX, t.y - q5.mouseY) < CELL / 2
+  );
+
+  if (clicked) {
+    draggingTower = clicked;
+    return;
+  }
+
+  if (paused && tutorialStep !== "place") return;
+
   const x = Math.floor(q5.mouseX / CELL) * CELL + CELL / 2;
   const y = Math.floor(q5.mouseY / CELL) * CELL + CELL / 2;
 
@@ -725,8 +913,35 @@ q5.mousePressed = function () {
 
   if (coins.spend(price)) {
     towers.push(new Tower(x, y));
-    paused = false;
-    gameMode = "navigation";
-    modeMessageStart = q5.frameCount;
+
+    if (towers.length === 2 && !mergeTutorialShown) {
+      mergeTutorialShown = true;
+      tutorialStep = "merge";
+      paused = true;
+    } else if (tutorialStep === "place") {
+      tutorialStep = "close";
+    }
   }
+};
+
+q5.mouseReleased = function () {
+  if (!draggingTower) return;
+
+  const target = towers.find(
+    t =>
+      t !== draggingTower &&
+      Math.hypot(t.x - q5.mouseX, t.y - q5.mouseY) < CELL / 2
+  );
+
+  if (target && target.level === draggingTower.level && target.level < 3) {
+    target.upgrade();
+    towers.splice(towers.indexOf(draggingTower), 1);
+
+    if (tutorialStep === "merge") {
+      tutorialStep = "done";
+      paused = false;
+    }
+  }
+
+  draggingTower = null;
 };
