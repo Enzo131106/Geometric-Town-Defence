@@ -4,7 +4,6 @@ const CELL = 70;
 const towers = [];
 const enemies = [];
 const bullet = [];
-const townhallImages = [];
 let coins;
 let townhall;
 let waves;
@@ -13,6 +12,11 @@ let grid;
 let gameState = "menu";
 let gameMode = "navigation";
 let modeMessageStart = -120;
+let paused = false;
+let tick = 0;
+let speed = 1;
+let tutorialShown = false;
+let tutorialStep = "press";
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -20,9 +24,6 @@ q5.setup = function () {
   coins = new Coins();
   grid = drawGrid();
   waves = new Wave();
-  for (let i = 1; i <= 5; i++) {
-  townhallImages.push(q5.loadImage(`assets/town_hall_v4_lv${i}_32.png`));
-}
 };
 
 function drawGrid() {
@@ -114,6 +115,8 @@ function restartGame() {
 
   gameMode = "navigation";
   modeMessageStart = -120;
+  paused = false;
+  speed = 1;
   gameState = "playing";
 }
 
@@ -122,6 +125,54 @@ function displayControls() {
   q5.textSize(Math.min(16, q5.width * 0.04, q5.height * 0.04));
   q5.textAlign(q5.LEFT, q5.BOTTOM);
   q5.text("C : Construction\nN : Navigation", 20, q5.height - 20);
+}
+
+function displayTutorial() {
+  if (tutorialStep === "place") {
+    const x = q5.width / 2;
+    const y = q5.height * 0.22;
+    const width = Math.min(420, q5.width * 0.9);
+    const height = Math.min(50, q5.height * 0.12);
+
+    q5.rectMode(q5.CENTER);
+    q5.noStroke();
+    q5.fill(20, 20, 20, 220);
+    q5.rect(x, y, width, height, 10);
+
+    q5.fill(255, 215, 0);
+    q5.textAlign(q5.CENTER, q5.CENTER);
+    q5.textSize(Math.min(20, q5.width * 0.05, q5.height * 0.05));
+    q5.text("Clique sur une case pour poser une tour", x, y);
+    return;
+  }
+
+  q5.rectMode(q5.CORNER);
+  q5.noStroke();
+  q5.fill(0, 190);
+  q5.rect(0, 0, q5.width, q5.height);
+
+  const size = Math.min(16, q5.width * 0.04, q5.height * 0.04);
+
+  q5.fill(255);
+  q5.textSize(size);
+  q5.textAlign(q5.LEFT, q5.BOTTOM);
+  q5.text("C : Construction\nN : Navigation", 20, q5.height - 20);
+
+  const tipX = 20 + q5.textWidth("C : Construction") + 12;
+  const tipY = q5.height - 20 - size * 1.8;
+  const len = Math.min(70, q5.width * 0.15);
+
+  q5.stroke(255, 215, 0);
+  q5.strokeWeight(4);
+  q5.line(tipX + len, tipY, tipX, tipY);
+  q5.line(tipX, tipY, tipX + 12, tipY - 8);
+  q5.line(tipX, tipY, tipX + 12, tipY + 8);
+
+  q5.noStroke();
+  q5.fill(255, 215, 0);
+  q5.textAlign(q5.LEFT, q5.CENTER);
+  q5.textSize(Math.min(20, q5.width * 0.05, q5.height * 0.05));
+  q5.text("Appuie sur C pour construire", tipX + len + 12, tipY);
 }
 
 function displayModeMessage() {
@@ -161,38 +212,56 @@ q5.draw = function () {
     return;
   }
 
+  if (!tutorialShown && coins.amount > 25) {
+    tutorialShown = true;
+    paused = true;
+  }
+
+  if (!paused) {
+    for (let i = 0; i < speed; i++) {
+      updateGame();
+      if (gameState === "gameover") {
+        displayGameOver();
+        return;
+      }
+    }
+  }
+
   q5.background(30);
   if (gameMode === "construction") {
-  q5.image(grid, 0, 0, q5.width, q5.height);
-}
+    q5.image(grid, 0, 0, q5.width, q5.height);
+  }
 
-  waves.update();
   waves.display();
 
   townhall.display();
   townhall.healthbar();
+
+  for (const t of towers) t.display();
+  for (const e of enemies) e.display();
+  for (const b of bullet) b.display();
+
+  coins.display();
+  displaySpeed();
+  displayControls();
+  displayModeMessage();
+  if (paused) displayTutorial();
+};
+
+function updateGame() {
+  tick++;
+
+  waves.update();
   townhall.shoot();
 
-  for (const t of towers) {
-    t.display();
-    t.shoot();
-  }
+  for (const t of towers) t.shoot();
 
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
 
     e.move();
 
-    if (e.damage()) {
-      enemies.splice(i, 1);
-
-      if (gameState === "gameover") {
-        displayGameOver();
-        return;
-      }
-    } else {
-      e.display();
-    }
+    if (e.damage()) enemies.splice(i, 1);
   }
 
   for (let i = bullet.length - 1; i >= 0; i--) {
@@ -200,17 +269,18 @@ q5.draw = function () {
 
     b.move();
 
-    if (b.damage() || b.outOfRange()) {
-      bullet.splice(i, 1);
-    } else {
-      b.display();
-    }
+    if (b.damage() || b.outOfRange()) bullet.splice(i, 1);
   }
+}
 
-  coins.display();
-  displayControls();
-  displayModeMessage();
-};
+function displaySpeed() {
+  if (speed === 1) return;
+
+  q5.fill(255);
+  q5.textSize(24);
+  q5.textAlign(q5.RIGHT, q5.TOP);
+  q5.text(`x${speed}`, q5.width - 20, 55);
+}
 
 q5.windowResized = function () {
   const oldX = townhall.x;
@@ -260,15 +330,24 @@ class Entity {
     q5.square(this.x, this.y, this.size, this.rounded);
   }
 
+  polygon(sides, radius, rotation = -Math.PI / 2) {
+    q5.beginShape();
+    for (let i = 0; i < sides; i++) {
+      const a = rotation + (i * 2 * Math.PI) / sides;
+      q5.vertex(this.x + Math.cos(a) * radius, this.y + Math.sin(a) * radius);
+    }
+    q5.endShape(q5.CLOSE);
+  }
+
   shoot() {
-    if (q5.frameCount - this.lastShot < this.fireRate) return;
+    if (tick - this.lastShot < this.fireRate) return;
 
     for (const e of enemies) {
       const distance = Math.hypot(e.x - this.x, e.y - this.y);
 
       if (distance <= this.range) {
         bullet.push(new Bullet(this.x, this.y, e));
-        this.lastShot = q5.frameCount;
+        this.lastShot = tick;
         return;
       }
     }
@@ -283,28 +362,30 @@ class Townhall extends Entity {
       Math.floor(q5.width / 2 / CELL) * CELL + CELL / 2,
       Math.floor(q5.height / 2 / CELL) * CELL + CELL / 2,
       CELL,
-      "#1262daff"
+      "#1262da"
     );
 
     this.range = 200;
     this.fireRate = 60;
-    this.lastShot = q5.frameCount;
+    this.lastShot = tick;
   }
 
-get level() {
-  return Math.min(5, Math.ceil(waves.number / 2));
-}
+  display() {
+    const radius = CELL / 2 - 5;
 
-display() {
-  q5.noSmooth();
-  q5.image(
-    townhallImages[this.level - 1],
-    this.x - CELL / 2,
-    this.y - CELL / 2,
-    CELL,
-    CELL
-  );
-}
+    q5.noFill();
+    q5.stroke(this.color);
+    q5.strokeWeight(3);
+    this.polygon(7, radius);
+
+    if (this.#hp > 0) {
+      q5.noStroke();
+      q5.fill(this.color);
+      this.polygon(7, radius * Math.sqrt(this.#hp / 100));
+    }
+
+    q5.noStroke();
+  }
 
   damage(amount) {
     this.#hp = Math.max(0, this.#hp - amount);
@@ -324,11 +405,19 @@ display() {
 
 class Tower extends Entity {
   constructor(x, y) {
-    super(x, y, CELL, "#da6c12ff");
+    super(x, y, CELL, "#f1c40f");
 
     this.range = 200;
     this.fireRate = 60;
     this.lastShot = 0;
+  }
+
+  display() {
+    q5.noFill();
+    q5.stroke(this.color);
+    q5.strokeWeight(3);
+    this.polygon(3, CELL / 2 - 8);
+    q5.noStroke();
   }
 }
 
@@ -412,14 +501,14 @@ class Wave {
   constructor() {
     this.number = 1;
     this.toSpawn = 1;
-    this.spawnTimer = q5.frameCount;
+    this.spawnTimer = tick;
     this.waitTimer = 0;
     this.waiting = false;
   }
 
   update() {
     if (this.toSpawn > 0) {
-      if (q5.frameCount - this.spawnTimer >= 60) {
+      if (tick - this.spawnTimer >= 60) {
         let amount = 1;
 
         if (q5.random() < 0.25) {
@@ -441,15 +530,15 @@ class Wave {
         }
 
         this.toSpawn -= amount;
-        this.spawnTimer = q5.frameCount;
+        this.spawnTimer = tick;
       }
     } else if (enemies.length === 0) {
       if (!this.waiting) {
         this.waiting = true;
-        this.waitTimer = q5.frameCount;
+        this.waitTimer = tick;
       }
 
-      if (q5.frameCount - this.waitTimer >= 300) {
+      if (tick - this.waitTimer >= 300) {
         this.number++;
 
         if (this.number <= 5) {
@@ -578,6 +667,17 @@ class Coins {
 q5.keyPressed = function () {
   if (gameState !== "playing") return;
 
+  if (!paused && q5.key === "*") speed = speed === 1 ? 5 : 1;
+
+  if (paused) {
+    if (q5.key === "c" || q5.key === "C") {
+      tutorialStep = "place";
+      gameMode = "construction";
+      modeMessageStart = q5.frameCount;
+    }
+    return;
+  }
+
   if ((q5.key === "c" || q5.key === "C") && gameMode !== "construction") {
     gameMode = "construction";
     modeMessageStart = q5.frameCount;
@@ -625,5 +725,8 @@ q5.mousePressed = function () {
 
   if (coins.spend(price)) {
     towers.push(new Tower(x, y));
+    paused = false;
+    gameMode = "navigation";
+    modeMessageStart = q5.frameCount;
   }
 };
