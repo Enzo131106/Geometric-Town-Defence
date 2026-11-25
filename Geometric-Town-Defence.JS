@@ -162,7 +162,9 @@ q5.draw = function () {
   }
 
   q5.background(30);
+  if (gameMode === "construction") {
   q5.image(grid, 0, 0, q5.width, q5.height);
+}
 
   waves.update();
   waves.display();
