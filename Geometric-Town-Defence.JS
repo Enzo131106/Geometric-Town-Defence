@@ -1,6 +1,11 @@
 const q5 = new Q5();
 
 const CELL = 70;
+
+// Town hall : départ au niveau 0, 5 améliorations (niveaux 1 à 5). Index = niveau.
+const TOWNHALL_MAX_LEVEL = 5;
+const TOWNHALL_UPGRADE_COST = [3000, 10000, 10000, 50000, 100000]; // prix pour atteindre le niveau 1, 2, 3, 4, 5
+const TOWNHALL_REGEN_TICKS = [0, 180, 120, 90, 60, 30]; // 1 PV regagné tous les N ticks (0 = aucune régénération)
 const towers = [];
 const enemies = [];
 const bullet = [];
@@ -10,7 +15,7 @@ let townhall;
 let waves;
 let grid;
 
-let gameState = "menu";
+let gameState = "playing";
 let gameMode = "navigation";
 let modeMessageStart = -120;
 let paused = false;
@@ -20,6 +25,7 @@ let tutorialShown = false;
 let mergeTutorialShown = false;
 let tutorialStep = "press";
 let draggingTower = null;
+let manualPause = false;
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -79,18 +85,6 @@ function drawButton(text, y, color) {
   q5.text(text, b.x, b.y);
 }
 
-function displayMenu() {
-  q5.background(30);
-
-  q5.fill(255);
-  q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(Math.min(50, q5.width * 0.09, q5.height * 0.1));
-
-  q5.text("TOWER DEFENSE", q5.width / 2, q5.height * 0.38);
-
-  drawButton("Jouer", q5.height * 0.62, "#2ecc71");
-}
-
 function displayGameOver() {
   q5.background(30);
 
@@ -104,7 +98,6 @@ function displayGameOver() {
   q5.text(`Vague atteinte : ${waves.number}`, q5.width / 2, q5.height * 0.4);
 
   drawButton("Rejouer", q5.height * 0.58, "#2ecc71");
-  drawButton("Menu principal", q5.height * 0.74, "#555555");
 }
 
 function restartGame() {
@@ -121,6 +114,7 @@ function restartGame() {
   gameMode = "navigation";
   modeMessageStart = -120;
   paused = false;
+  manualPause = false;
   speed = 1;
   gameState = "playing";
   tutorialShown = false;
@@ -146,19 +140,17 @@ function tutorialBox(message, maxWidth) {
   q5.text(message, x, y);
 }
 
-// Redessine les tours par-dessus le voile sombre, avec un halo qui pulse
+// Redessine les tours par-dessus le voile sombre, avec un halo fixe
 function highlightTowers() {
-  const pulse = 0.5 + 0.5 * Math.sin(q5.frameCount * 0.1);
-
   for (const t of towers) {
     const isDragged = t === draggingTower;
     const x = isDragged ? q5.mouseX : t.x;
     const y = isDragged ? q5.mouseY : t.y;
 
-    // Halo pulsant derrière la tour
+    // Halo statique derrière la tour
     q5.noStroke();
-    q5.fill(255, 255, 255, 40 + 60 * pulse);
-    q5.circle(x, y, CELL + 10 + 12 * pulse);
+    q5.fill(255, 255, 255, 70);
+    q5.circle(x, y, CELL + 16);
     q5.fill(255, 215, 0, 60);
     q5.circle(x, y, CELL - 10);
 
@@ -224,11 +216,6 @@ function displayModeMessage() {
 }
 
 q5.draw = function () {
-  if (gameState === "menu") {
-    displayMenu();
-    return;
-  }
-
   if (gameState === "gameover") {
     displayGameOver();
     return;
@@ -239,7 +226,7 @@ q5.draw = function () {
     paused = true;
   }
 
-  if (!paused) {
+  if (!paused && !manualPause) {
     for (let i = 0; i < speed; i++) {
       updateGame();
       if (gameState === "gameover") {
@@ -292,10 +279,82 @@ q5.draw = function () {
   displayEffects();
 
   coins.display();
-  displaySpeed();
   displayModeMessage();
+  displayHelp();
+  displayPauseLabel();
   if (paused) displayTutorial();
 };
+
+function nextTowerPrice() {
+  const base = 25 * Math.pow(2.27, towers.length);
+
+  return Math.max(1, Math.ceil(base / townhall.priceDivider));
+}
+
+// Aide des touches (bas gauche) et prix de la prochaine tour (bas droite)
+function displayHelp() {
+  const size = Math.min(16, q5.width * 0.04, q5.height * 0.04);
+  const margin = 20;
+  const lineHeight = size * 1.5;
+
+  q5.noStroke();
+  q5.textSize(size);
+
+  // Bas gauche : touches
+  const lines = [
+    "C : mode construction / navigation",
+    "P : pause",
+    "U : améliorer le town hall"
+  ];
+
+  q5.textAlign(q5.LEFT, q5.BOTTOM);
+  q5.fill(255, 200);
+
+  for (let i = 0; i < lines.length; i++) {
+    const y = q5.height - margin - (lines.length - 1 - i) * lineHeight;
+    q5.text(lines[i], margin, y);
+  }
+
+  // Bas droite : prix et town hall
+  const price = nextTowerPrice();
+  const cost = townhall.upgradeCost;
+  const divider = townhall.priceDivider;
+
+  const right = [
+    {
+      text: `Prochaine tour : 🪙${price}` + (divider > 1 ? ` (÷${divider})` : ""),
+      color: coins.amount >= price ? q5.color(46, 204, 113) : q5.color(255, 215, 0)
+    },
+    cost === null
+      ? { text: "Town hall au niveau max", color: q5.color(255, 215, 0) }
+      : {
+          text: `Améliorer le town hall (U) : 🪙${cost}`,
+          color: coins.amount >= cost ? q5.color(46, 204, 113) : q5.color(255, 215, 0)
+        }
+  ];
+
+  q5.textAlign(q5.RIGHT, q5.BOTTOM);
+
+  for (let i = 0; i < right.length; i++) {
+    const y = q5.height - margin - (right.length - 1 - i) * lineHeight;
+    q5.fill(right[i].color);
+    q5.text(right[i].text, q5.width - margin, y);
+  }
+}
+
+function displayPauseLabel() {
+  if (!manualPause) return;
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.fill(20, 20, 20, 200);
+  q5.rect(q5.width / 2, q5.height * 0.5, 220, 70, 10);
+
+  q5.fill(255);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(28);
+  q5.text("PAUSE", q5.width / 2, q5.height * 0.5);
+}
 
 // Anneau orange qui s'étend à l'endroit où une balle de niveau 3 se divise
 function displayEffects() {
@@ -309,7 +368,7 @@ function displayEffects() {
     q5.circle(fx.x, fx.y, 20 + 70 * t);
     q5.noStroke();
 
-    if (!paused) fx.age += speed;
+    if (!paused && !manualPause) fx.age += speed;
     if (fx.age >= fx.life) effects.splice(i, 1);
   }
 }
@@ -318,6 +377,7 @@ function updateGame() {
   tick++;
 
   waves.update();
+  townhall.update();
   townhall.shoot();
 
   for (const t of towers) t.shoot();
@@ -337,15 +397,6 @@ function updateGame() {
 
     if (b.damage() || b.outOfRange()) bullet.splice(i, 1);
   }
-}
-
-function displaySpeed() {
-  if (speed === 1) return;
-
-  q5.fill(255);
-  q5.textSize(24);
-  q5.textAlign(q5.RIGHT, q5.TOP);
-  q5.text(`x${speed}`, q5.width - 20, 55);
 }
 
 q5.windowResized = function () {
@@ -424,6 +475,7 @@ class Entity {
 
 class Townhall extends Entity {
   #hp = 100;
+  #maxHp = 100; // +100 à chaque niveau
 
   constructor() {
     super(
@@ -433,10 +485,62 @@ class Townhall extends Entity {
       "#1262da"
     );
 
-    this.level = 0;
+    this.level = 0; // niveau des balles (pas le niveau d'amélioration)
+    this.upgradeLevel = 0;
     this.range = 200;
     this.fireRate = 60;
     this.lastShot = tick;
+  }
+
+  // 7 faces au départ, +1 face par niveau
+  get sides() {
+    return 7 + this.upgradeLevel;
+  }
+
+  // Le prix des tours est divisé par 2 à chaque niveau (x1, /2, /4, /8, /16, /32)
+  get priceDivider() {
+    return Math.pow(2, this.upgradeLevel);
+  }
+
+  get regenTicks() {
+    return TOWNHALL_REGEN_TICKS[this.upgradeLevel];
+  }
+
+  // Prix de la prochaine amélioration, ou null si niveau max
+  get upgradeCost() {
+    if (this.upgradeLevel >= TOWNHALL_MAX_LEVEL) return null;
+    return TOWNHALL_UPGRADE_COST[this.upgradeLevel];
+  }
+
+  tryUpgrade() {
+    const cost = this.upgradeCost;
+
+    if (cost === null) return false;
+    if (!coins.spend(cost)) return false;
+
+    this.upgradeLevel++;
+    this.#maxHp += 100;
+    this.#hp += 100; // gagne les PV ajoutés
+    this.color = this.levelColor();
+    return true;
+  }
+
+  // Couleur qui passe progressivement du bleu au vert (vert complet au niveau max)
+  levelColor() {
+    const from = [18, 98, 218]; // #1262da
+    const to = [46, 204, 113]; // #2ecc71
+    const t = this.upgradeLevel / TOWNHALL_MAX_LEVEL;
+
+    const c = from.map((v, i) => Math.round(v + (to[i] - v) * t));
+
+    return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  }
+
+  // Régénération passive
+  update() {
+    if (this.regenTicks > 0 && this.#hp < this.#maxHp && tick % this.regenTicks === 0) {
+      this.#hp++;
+    }
   }
 
   display() {
@@ -445,12 +549,12 @@ class Townhall extends Entity {
     q5.noFill();
     q5.stroke(this.color);
     q5.strokeWeight(3);
-    this.polygon(7, radius);
+    this.polygon(this.sides, radius);
 
     if (this.#hp > 0) {
       q5.noStroke();
       q5.fill(this.color);
-      this.polygon(7, radius * Math.sqrt(this.#hp / 100));
+      this.polygon(this.sides, radius * Math.sqrt(this.#hp / this.#maxHp));
     }
 
     q5.noStroke();
@@ -472,8 +576,10 @@ class Townhall extends Entity {
   }
 }
 
-// Tower levels: 1 = triangle jaune, 2 = carré rouge (2x vitesse de tir, +50% portée),
-// 3 = pentagone rouge (garde les stats du niveau 2, les balles se dispersent en 3 à l'impact)
+// Tower levels: 1 = triangle jaune,
+// 2 = carré rouge (2x vitesse de tir, +50% portée),
+// 3 = pentagone rouge (2x vitesse de tir et 2x portée par rapport au niveau 2,
+// les balles se dispersent en 3 à l'impact)
 class Tower extends Entity {
   constructor(x, y, level = 1) {
     super(x, y, CELL, "#f1c40f");
@@ -487,10 +593,14 @@ class Tower extends Entity {
       this.range = 200;
       this.fireRate = 60;
       this.color = "#f1c40f";
-    } else {
-      // niveaux 2 et 3 : mêmes stats
+    } else if (this.level === 2) {
       this.range = 300;
       this.fireRate = 30;
+      this.color = "#e74c3c";
+    } else {
+      // niveau 3 : 2x la portée et 2x la vitesse de tir du niveau 2
+      this.range = 600;
+      this.fireRate = 15;
       this.color = "#e74c3c";
     }
   }
@@ -835,7 +945,15 @@ class Coins {
 q5.keyPressed = function () {
   if (gameState !== "playing") return;
 
-  if (!paused && q5.key === "*") speed = speed === 1 ? 5 : 1;
+  if ((q5.key === "p" || q5.key === "P") && !paused) {
+    manualPause = !manualPause;
+    return;
+  }
+
+  if ((q5.key === "u" || q5.key === "U") && !paused) {
+    townhall.tryUpgrade();
+    return;
+  }
 
   if (paused) {
     if (q5.key === "c" || q5.key === "C") {
@@ -866,18 +984,9 @@ q5.keyPressed = function () {
 };
 
 q5.mousePressed = function () {
-  if (gameState === "menu") {
-    if (isButtonClicked(q5.height * 0.62)) {
-      restartGame();
-    }
-    return;
-  }
-
   if (gameState === "gameover") {
     if (isButtonClicked(q5.height * 0.58)) {
       restartGame();
-    } else if (isButtonClicked(q5.height * 0.74)) {
-      gameState = "menu";
     }
     return;
   }
@@ -909,7 +1018,7 @@ q5.mousePressed = function () {
   if (x === townhall.x && y === townhall.y) return;
   if (towers.some(t => t.x === x && t.y === y)) return;
 
-  const price = Math.ceil(25 * Math.pow(2.27, towers.length));
+  const price = nextTowerPrice();
 
   if (coins.spend(price)) {
     towers.push(new Tower(x, y));
