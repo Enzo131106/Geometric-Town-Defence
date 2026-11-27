@@ -9,7 +9,6 @@ const TOWNHALL_REGEN_TICKS = [0, 180, 120, 90, 60, 30]; // 1 PV regagné tous le
 const towers = [];
 const enemies = [];
 const bullet = [];
-const effects = [];
 let coins;
 let townhall;
 let waves;
@@ -26,6 +25,12 @@ let mergeTutorialShown = false;
 let tutorialStep = "press";
 let draggingTower = null;
 let manualPause = false;
+let speedMessageStart = -120;
+let upgradeMessage = null;
+let speedTutorial = false;
+let speedTutorialShown = false;
+let townhallTutorial = false;
+let townhallTutorialShown = false;
 let towersBought = 0; // nombre de tours achetées (la fusion ne fait pas baisser le prix)
 
 q5.setup = function () {
@@ -51,41 +56,6 @@ function drawGrid() {
   return Grid;
 }
 
-function getButton(y) {
-  return {
-    x: q5.width / 2,
-    y: y,
-    width: Math.min(240, q5.width * 0.8),
-    height: Math.min(60, q5.height * 0.11)
-  };
-}
-
-function isButtonClicked(y) {
-  const b = getButton(y);
-
-  return (
-    q5.mouseX >= b.x - b.width / 2 &&
-    q5.mouseX <= b.x + b.width / 2 &&
-    q5.mouseY >= b.y - b.height / 2 &&
-    q5.mouseY <= b.y + b.height / 2
-  );
-}
-
-function drawButton(text, y, color) {
-  const b = getButton(y);
-
-  q5.rectMode(q5.CENTER);
-  q5.noStroke();
-
-  q5.fill(isButtonClicked(y) ? "#39d980" : color);
-  q5.rect(b.x, b.y, b.width, b.height, 10);
-
-  q5.fill(255);
-  q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(Math.min(24, q5.width * 0.065, q5.height * 0.06));
-  q5.text(text, b.x, b.y);
-}
-
 function displayGameOver() {
   q5.background(30);
 
@@ -98,16 +68,21 @@ function displayGameOver() {
   q5.textSize(Math.min(24, q5.width * 0.06, q5.height * 0.06));
   q5.text(`Vague atteinte : ${waves.number}`, q5.width / 2, q5.height * 0.4);
 
-  drawButton("Rejouer", q5.height * 0.58, "#2ecc71");
+  q5.text("Appuyez sur R pour rejouer", q5.width / 2, q5.height * 0.58);
 }
 
 function restartGame() {
   towers.length = 0;
   enemies.length = 0;
   bullet.length = 0;
-  effects.length = 0;
   draggingTower = null;
   towersBought = 0;
+  townhallTutorial = false;
+  townhallTutorialShown = false;
+  speedTutorial = false;
+  speedTutorialShown = false;
+  speedMessageStart = -120;
+  upgradeMessage = null;
 
   townhall = new Townhall();
   coins = new Coins();
@@ -124,12 +99,12 @@ function restartGame() {
   tutorialStep = "press";
 }
 
-function tutorialBox(message, maxWidth) {
+function tutorialBox(message, maxWidth, yFactor = 0.22) {
   const x = q5.width / 2;
   const size = Math.min(20, q5.width * 0.05, q5.height * 0.05);
   const width = Math.min(maxWidth, q5.width * 0.9);
   const height = size * 1.5 + 24;
-  const y = q5.height * 0.22;
+  const y = q5.height * yFactor;
 
   q5.rectMode(q5.CENTER);
   q5.noStroke();
@@ -165,7 +140,39 @@ function highlightTowers() {
   }
 }
 
+// Met le town hall en valeur par-dessus le voile sombre
+function highlightTownhall() {
+  q5.noStroke();
+  q5.fill(255, 255, 255, 70);
+  q5.circle(townhall.x, townhall.y, CELL + 16);
+  townhall.display();
+}
+
 function displayTutorial() {
+  if (speedTutorial) {
+    q5.rectMode(q5.CORNER);
+    q5.noStroke();
+    q5.fill(0, 150);
+    q5.rect(0, 0, q5.width, q5.height);
+
+    displaySpeed();
+    tutorialBox("Vague 5 : tu peux maintenant accélérer le jeu !", 560);
+    tutorialBox("Appuie sur → pour passer en x2 (← pour ralentir)", 560, 0.3);
+    return;
+  }
+
+  if (townhallTutorial) {
+    q5.rectMode(q5.CORNER);
+    q5.noStroke();
+    q5.fill(0, 150);
+    q5.rect(0, 0, q5.width, q5.height);
+
+    highlightTownhall();
+    tutorialBox("Appuie sur U pour améliorer le town hall", 520);
+    tutorialBox("Plus de PV, régénération et tours moins chères", 520, 0.3);
+    return;
+  }
+
   if (tutorialStep === "place") {
     tutorialBox("Clique sur une case pour poser une tour", 520);
     return;
@@ -186,6 +193,65 @@ function displayTutorial() {
     tutorialBox("Glisse un triangle sur l'autre pour les fusionner", 460);
   } else {
     tutorialBox("Appuie sur C pour construire", 420);
+  }
+}
+
+function displaySpeedMessage() {
+  const elapsed = q5.frameCount - speedMessageStart;
+
+  if (elapsed >= 120) return;
+
+  const alpha = Math.min(255, (120 - elapsed) * 10);
+  const x = q5.width / 2;
+  const y = q5.height * 0.2;
+  const width = Math.min(380, q5.width * 0.9);
+  const height = Math.min(50, q5.height * 0.12);
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.fill(20, 20, 20, alpha * 0.85);
+  q5.rect(x, y, width, height, 10);
+
+  q5.fill(255, alpha);
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(Math.min(20, q5.width * 0.05, q5.height * 0.06));
+  q5.text("Impossible d'accélérer plus le jeu", x, y);
+}
+
+// Affiche quelques secondes ce qui a changé après une amélioration du town hall
+function displayUpgradeMessage() {
+  if (!upgradeMessage) return;
+
+  const life = 240;
+  const elapsed = q5.frameCount - upgradeMessage.start;
+
+  if (elapsed >= life) {
+    upgradeMessage = null;
+    return;
+  }
+
+  const alpha = Math.min(255, (life - elapsed) * 5);
+  const lines = upgradeMessage.lines;
+  const size = Math.min(20, q5.width * 0.05, q5.height * 0.05);
+  const lineHeight = size * 1.5;
+  const width = Math.min(460, q5.width * 0.9);
+  const height = lines.length * lineHeight + 24;
+  const x = q5.width / 2;
+  const y = q5.height * 0.38;
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.fill(20, 20, 20, alpha * 0.85);
+  q5.rect(x, y, width, height, 10);
+
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(size);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (i === 0) q5.fill(46, 204, 113, alpha);
+    else q5.fill(255, 215, 0, alpha);
+
+    q5.text(lines[i], x, y - height / 2 + 12 + lineHeight * (i + 0.5));
   }
 }
 
@@ -223,6 +289,18 @@ q5.draw = function () {
 
   if (!tutorialShown && coins.amount > 25) {
     tutorialShown = true;
+    paused = true;
+  }
+
+  if (!speedTutorialShown && !paused && waves.number >= 5) {
+    speedTutorialShown = true;
+    speedTutorial = true;
+    paused = true;
+  }
+
+  if (!townhallTutorialShown && !paused && coins.amount >= 3000) {
+    townhallTutorialShown = true;
+    townhallTutorial = true;
     paused = true;
   }
 
@@ -276,11 +354,12 @@ q5.draw = function () {
 
   for (const e of enemies) e.display();
   for (const b of bullet) b.display();
-  displayEffects();
 
   coins.display();
   displayModeMessage();
-  displaySpeedControl();
+  displaySpeedMessage();
+  displayUpgradeMessage();
+  displaySpeed();
   displayHelp();
   displayPauseLabel();
   if (paused) displayTutorial();
@@ -291,70 +370,13 @@ function maxSpeed() {
   return Math.min(5, 1 + Math.floor(waves.number / 5));
 }
 
-// Géométrie du contrôle de vitesse, sous l'affichage des vagues : [-] 1x [+]
-function speedControlLayout() {
-  const btn = 28;
-  const gap = 8;
-  const labelW = 44;
-  const total = btn * 2 + gap * 2 + labelW;
-  const left = q5.width - 20 - total;
-  const cy = 70;
-
-  return {
-    btn,
-    cy,
-    minusX: left + btn / 2,
-    labelX: left + btn + gap + labelW / 2,
-    plusX: left + total - btn / 2
-  };
-}
-
-function displaySpeedControl() {
-  const L = speedControlLayout();
-  const canPlus = speed < maxSpeed();
-  const canMinus = speed > 1;
-
-  q5.rectMode(q5.CENTER);
-  q5.noStroke();
-  q5.textAlign(q5.CENTER, q5.CENTER);
-  q5.textSize(20);
-
-  q5.fill(255, canPlus ? 60 : 20);
-  q5.rect(L.plusX, L.cy, L.btn, L.btn, 6);
-  q5.fill(255, canPlus ? 255 : 90);
-  q5.text("+", L.plusX, L.cy);
-
+// Affiche la vitesse actuelle sous les vagues
+function displaySpeed() {
   q5.fill(255);
-  q5.text(`${speed}x`, L.labelX, L.cy);
-
-  q5.fill(255, canMinus ? 60 : 20);
-  q5.rect(L.minusX, L.cy, L.btn, L.btn, 6);
-  q5.fill(255, canMinus ? 255 : 90);
-  q5.text("-", L.minusX, L.cy);
-}
-
-// Retourne true si le clic est tombé sur un bouton de vitesse
-function handleSpeedClick() {
-  const L = speedControlLayout();
-  const half = L.btn / 2;
-
-  const inside = x =>
-    q5.mouseX >= x - half &&
-    q5.mouseX <= x + half &&
-    q5.mouseY >= L.cy - half &&
-    q5.mouseY <= L.cy + half;
-
-  if (inside(L.plusX)) {
-    if (speed < maxSpeed()) speed++;
-    return true;
-  }
-
-  if (inside(L.minusX)) {
-    if (speed > 1) speed--;
-    return true;
-  }
-
-  return false;
+  q5.noStroke();
+  q5.textSize(24);
+  q5.textAlign(q5.RIGHT, q5.TOP);
+  q5.text(`${speed}x`, q5.width - 20, 55);
 }
 
 function nextTowerPrice() {
@@ -376,7 +398,8 @@ function displayHelp() {
   const lines = [
     "C : mode construction / navigation",
     "P : pause",
-    "U : améliorer le town hall"
+    "U : améliorer le town hall",
+    "← / → : vitesse du jeu"
   ];
 
   q5.textAlign(q5.LEFT, q5.BOTTOM);
@@ -390,11 +413,10 @@ function displayHelp() {
   // Bas droite : prix et town hall
   const price = nextTowerPrice();
   const cost = townhall.upgradeCost;
-  const divider = townhall.priceDivider;
 
   const right = [
     {
-      text: `Prochaine tour : 🪙${price}` + (divider > 1 ? ` (÷${divider})` : ""),
+      text: `Prochaine tour : 🪙${price}`,
       color: coins.amount >= price ? q5.color(46, 204, 113) : q5.color(255, 215, 0)
     },
     cost === null
@@ -426,23 +448,6 @@ function displayPauseLabel() {
   q5.textAlign(q5.CENTER, q5.CENTER);
   q5.textSize(28);
   q5.text("PAUSE", q5.width / 2, q5.height * 0.5);
-}
-
-// Anneau orange qui s'étend à l'endroit où une balle de niveau 3 se divise
-function displayEffects() {
-  for (let i = effects.length - 1; i >= 0; i--) {
-    const fx = effects[i];
-    const t = fx.age / fx.life;
-
-    q5.noFill();
-    q5.stroke(255, 159, 67, 255 * (1 - t));
-    q5.strokeWeight(4);
-    q5.circle(fx.x, fx.y, 20 + 70 * t);
-    q5.noStroke();
-
-    if (!paused && !manualPause) fx.age += speed;
-    if (fx.age >= fx.life) effects.splice(i, 1);
-  }
 }
 
 function updateGame() {
@@ -590,10 +595,30 @@ class Townhall extends Entity {
     if (cost === null) return false;
     if (!coins.spend(cost)) return false;
 
+    const oldLevel = this.upgradeLevel;
+    const oldMax = this.#maxHp;
+
     this.upgradeLevel++;
     this.#maxHp += 100;
     this.#hp += 100; // gagne les PV ajoutés
     this.color = this.levelColor();
+
+    const regen = lvl => {
+      const t = TOWNHALL_REGEN_TICKS[lvl];
+      return t > 0 ? (60 / t).toFixed(1) : "0";
+    };
+    const divider = lvl => (lvl === 0 ? "normal" : `÷${Math.pow(2, lvl)}`);
+
+    upgradeMessage = {
+      start: q5.frameCount,
+      lines: [
+        `Town hall niveau ${this.upgradeLevel}/${TOWNHALL_MAX_LEVEL}`,
+        `PV max : ${oldMax} → ${this.#maxHp}`,
+        `Régénération : ${regen(oldLevel)} → ${regen(this.upgradeLevel)} PV/s`,
+        `Prix des tours : ${divider(oldLevel)} → ${divider(this.upgradeLevel)}`
+      ]
+    };
+
     return true;
   }
 
@@ -650,8 +675,7 @@ class Townhall extends Entity {
 
 // Tower levels: 1 = triangle jaune,
 // 2 = carré rouge (2x vitesse de tir, +50% portée),
-// 3 = pentagone rouge (2x vitesse de tir et 2x portée par rapport au niveau 2,
-// les balles se dispersent en 3 à l'impact)
+// 3 = pentagone rouge (2x vitesse de tir et 2x portée par rapport au niveau 2)
 class Tower extends Entity {
   constructor(x, y, level = 1) {
     super(x, y, CELL, "#f1c40f");
@@ -841,8 +865,6 @@ class Bullet {
     this.x = x;
     this.y = y;
 
-    this.target = target;
-    this.homing = !!target;
     this.sourceLevel = sourceLevel;
     this.canSplit = canSplit;
 
@@ -866,43 +888,8 @@ class Bullet {
     }
   }
 
-  // Si la cible est morte (tuée par une autre balle), vise l'ennemi le plus proche
-  retarget() {
-    let best = null;
-    let bestD = 300;
-
-    for (const e of enemies) {
-      const d = Math.hypot(e.x - this.x, e.y - this.y);
-
-      if (d < bestD) {
-        best = e;
-        bestD = d;
-      }
-    }
-
-    this.target = best;
-  }
-
-  hasLiveTarget() {
-    return this.target !== null && enemies.includes(this.target);
-  }
-
+  // La direction est fixée au tir : le projectile ne change jamais de trajectoire
   move() {
-    if (this.homing && !this.hasLiveTarget()) {
-      this.retarget();
-    }
-
-    if (this.hasLiveTarget()) {
-      const dx = this.target.x - this.x;
-      const dy = this.target.y - this.y;
-      const distance = Math.hypot(dx, dy);
-
-      if (distance > 0) {
-        this.dx = dx / distance;
-        this.dy = dy / distance;
-      }
-    }
-
     this.x += this.dx * this.speed;
     this.y += this.dy * this.speed;
   }
@@ -918,20 +905,9 @@ class Bullet {
   }
 
   damage() {
-    let victim = null;
-
-    if (this.target) {
-      if (this.hasLiveTarget() && this.touches(this.target)) {
-        victim = this.target;
-      }
-    } else {
-      victim = enemies.find(e => this.touches(e)) ?? null;
-    }
+    const victim = enemies.find(e => this.touches(e)) ?? null;
 
     if (!victim) return false;
-
-    const hitX = this.x;
-    const hitY = this.y;
 
     if (victim.takeDamage(this.#damage)) {
       enemies.splice(enemies.indexOf(victim), 1);
@@ -941,41 +917,7 @@ class Bullet {
       coins.add(reward);
     }
 
-    if (this.sourceLevel === 3 && this.canSplit) {
-      this.splitAt(hitX, hitY, victim);
-    }
-
     return true;
-  }
-
-  // À l'impact d'une balle de niveau 3 : 3 petites boules apparaissent.
-  // Chaque boule vise un ennemi proche différent (les plus proches du point d'impact).
-  // S'il y a moins de 3 ennemis, les boules en trop partent dans le vide.
-  splitAt(x, y, victim) {
-    const radius = 160;
-
-    const nearby = enemies
-      .filter(e => e !== victim)
-      .map(e => ({ e, d: Math.hypot(e.x - x, e.y - y) }))
-      .filter(o => o.d <= radius)
-      .sort((a, b) => a.d - b.d)
-      .slice(0, 3);
-
-    const start = q5.random(Math.PI * 2);
-
-    for (let i = 0; i < 3; i++) {
-      const target = nearby[i] ? nearby[i].e : null;
-      const angle = start + (i * 2 * Math.PI) / 3;
-
-      const b = new Bullet(x, y, target, 0, false, 0.5, angle);
-      b.range = 200; // assez de portée pour rejoindre les ennemis dans le rayon
-      b.color = "#ff9f43";
-      b.size = 14;
-      b.speed = 4;
-      bullet.push(b);
-    }
-
-    effects.push({ x, y, age: 0, life: 25 });
   }
 
   outOfRange() {
@@ -1015,6 +957,11 @@ class Coins {
 }
 
 q5.keyPressed = function () {
+  if (gameState === "gameover") {
+    if (q5.key === "r" || q5.key === "R") restartGame();
+    return;
+  }
+
   if (gameState !== "playing") return;
 
   if ((q5.key === "p" || q5.key === "P") && !paused) {
@@ -1027,7 +974,35 @@ q5.keyPressed = function () {
     return;
   }
 
+  if (!paused && (q5.key === "ArrowRight" || q5.keyCode === 39)) {
+    if (speed < maxSpeed()) speed++;
+    else speedMessageStart = q5.frameCount;
+    return;
+  }
+
+  if (!paused && (q5.key === "ArrowLeft" || q5.keyCode === 37)) {
+    if (speed > 1) speed--;
+    return;
+  }
+
   if (paused) {
+    if (speedTutorial) {
+      if (q5.key === "ArrowRight" || q5.keyCode === 39) {
+        speed = 2;
+        speedTutorial = false;
+        paused = false;
+      }
+      return;
+    }
+
+    if (townhallTutorial) {
+      if ((q5.key === "u" || q5.key === "U") && townhall.tryUpgrade()) {
+        townhallTutorial = false;
+        paused = false;
+      }
+      return;
+    }
+
     if (q5.key === "c" || q5.key === "C") {
       if (tutorialStep === "press") {
         tutorialStep = "place";
@@ -1056,14 +1031,7 @@ q5.keyPressed = function () {
 };
 
 q5.mousePressed = function () {
-  if (gameState === "gameover") {
-    if (isButtonClicked(q5.height * 0.58)) {
-      restartGame();
-    }
-    return;
-  }
-
-  if (!paused && handleSpeedClick()) return;
+  if (gameState === "gameover") return;
 
   if (gameMode !== "construction") return;
 
