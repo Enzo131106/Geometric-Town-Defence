@@ -380,7 +380,7 @@ function displaySpeed() {
 }
 
 function nextTowerPrice() {
-  const base = 25 * Math.pow(2.27, towersBought);
+  const base = 25 * Math.pow(1.5, towersBought);
 
   return Math.max(1, Math.ceil(base / townhall.priceDivider));
 }
