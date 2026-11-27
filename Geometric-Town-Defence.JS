@@ -26,6 +26,7 @@ let mergeTutorialShown = false;
 let tutorialStep = "press";
 let draggingTower = null;
 let manualPause = false;
+let towersBought = 0; // nombre de tours achetées (la fusion ne fait pas baisser le prix)
 
 q5.setup = function () {
   q5.createCanvas(q5.windowWidth, q5.windowHeight);
@@ -106,6 +107,7 @@ function restartGame() {
   bullet.length = 0;
   effects.length = 0;
   draggingTower = null;
+  towersBought = 0;
 
   townhall = new Townhall();
   coins = new Coins();
@@ -151,8 +153,6 @@ function highlightTowers() {
     q5.noStroke();
     q5.fill(255, 255, 255, 70);
     q5.circle(x, y, CELL + 16);
-    q5.fill(255, 215, 0, 60);
-    q5.circle(x, y, CELL - 10);
 
     // Tour redessinée par-dessus le voile (à la position de la souris si on la glisse)
     const ox = t.x;
@@ -280,13 +280,85 @@ q5.draw = function () {
 
   coins.display();
   displayModeMessage();
+  displaySpeedControl();
   displayHelp();
   displayPauseLabel();
   if (paused) displayTutorial();
 };
 
+// Vitesse max débloquée : +1 niveau toutes les 5 vagues (plafonné à x5)
+function maxSpeed() {
+  return Math.min(5, 1 + Math.floor(waves.number / 5));
+}
+
+// Géométrie du contrôle de vitesse, sous l'affichage des vagues : [-] 1x [+]
+function speedControlLayout() {
+  const btn = 28;
+  const gap = 8;
+  const labelW = 44;
+  const total = btn * 2 + gap * 2 + labelW;
+  const left = q5.width - 20 - total;
+  const cy = 70;
+
+  return {
+    btn,
+    cy,
+    minusX: left + btn / 2,
+    labelX: left + btn + gap + labelW / 2,
+    plusX: left + total - btn / 2
+  };
+}
+
+function displaySpeedControl() {
+  const L = speedControlLayout();
+  const canPlus = speed < maxSpeed();
+  const canMinus = speed > 1;
+
+  q5.rectMode(q5.CENTER);
+  q5.noStroke();
+  q5.textAlign(q5.CENTER, q5.CENTER);
+  q5.textSize(20);
+
+  q5.fill(255, canPlus ? 60 : 20);
+  q5.rect(L.plusX, L.cy, L.btn, L.btn, 6);
+  q5.fill(255, canPlus ? 255 : 90);
+  q5.text("+", L.plusX, L.cy);
+
+  q5.fill(255);
+  q5.text(`${speed}x`, L.labelX, L.cy);
+
+  q5.fill(255, canMinus ? 60 : 20);
+  q5.rect(L.minusX, L.cy, L.btn, L.btn, 6);
+  q5.fill(255, canMinus ? 255 : 90);
+  q5.text("-", L.minusX, L.cy);
+}
+
+// Retourne true si le clic est tombé sur un bouton de vitesse
+function handleSpeedClick() {
+  const L = speedControlLayout();
+  const half = L.btn / 2;
+
+  const inside = x =>
+    q5.mouseX >= x - half &&
+    q5.mouseX <= x + half &&
+    q5.mouseY >= L.cy - half &&
+    q5.mouseY <= L.cy + half;
+
+  if (inside(L.plusX)) {
+    if (speed < maxSpeed()) speed++;
+    return true;
+  }
+
+  if (inside(L.minusX)) {
+    if (speed > 1) speed--;
+    return true;
+  }
+
+  return false;
+}
+
 function nextTowerPrice() {
-  const base = 25 * Math.pow(2.27, towers.length);
+  const base = 25 * Math.pow(2.27, towersBought);
 
   return Math.max(1, Math.ceil(base / townhall.priceDivider));
 }
@@ -328,7 +400,7 @@ function displayHelp() {
     cost === null
       ? { text: "Town hall au niveau max", color: q5.color(255, 215, 0) }
       : {
-          text: `Améliorer le town hall (U) : 🪙${cost}`,
+          text: `Prochain niveau de town hall : 🪙${cost}`,
           color: coins.amount >= cost ? q5.color(46, 204, 113) : q5.color(255, 215, 0)
         }
   ];
@@ -991,6 +1063,8 @@ q5.mousePressed = function () {
     return;
   }
 
+  if (!paused && handleSpeedClick()) return;
+
   if (gameMode !== "construction") return;
 
   // Clic sur une tour existante : démarre le glisser pour fusion
@@ -1021,6 +1095,7 @@ q5.mousePressed = function () {
   const price = nextTowerPrice();
 
   if (coins.spend(price)) {
+    towersBought++;
     towers.push(new Tower(x, y));
 
     if (towers.length === 2 && !mergeTutorialShown) {
